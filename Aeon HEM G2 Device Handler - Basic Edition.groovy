@@ -1,6 +1,6 @@
 /**
  *	Aeon Home Energy Meter v2 Gen2 Basic Edition
- *	Version: 0.9e
+ *	Version: 0.9f
  *
  *	Disclaimer: This WILL NOT work with Aeon's HEM Gen1 or Gen5 (latest version) as is intended to be used for HEMs
  *				installed on the typical 200A 240V split-phase US residential systems (Two 120V legs and a neutral -
@@ -39,13 +39,11 @@
  *			- Once debug on/off is enabled, add more debugging to help troubleshoot issues
  *			- Check whether polling is needed, and enable if needed
  *			- Refresh and Configure button may not be necessary, evaluate and leave/remove as needed
- *			- Figure out why at times the values in the tile are pushed down... ST bug or programming issue? ST Android app bug from what I have read...
- *			- Why is tile text not resizing?
  *			- Look into sendEvent and [name.... commands. Not sure they are all required.
  *
  *	History:
  * 
-  *	2016-07-15:	- Basic functionality seems to work but lots more work is necessary
+ *	2016-07-15:	- Basic functionality seems to work but lots more work is necessary
  *	2016-07-19:	- Change max values used for tile colors. I want the tile to be red before it gets to max values. If it goes beyond the
  *				  new lower max it will either just stay red. All steps in between are interpolated so this change just makes it transition
  *				  to red sooner.
@@ -63,6 +61,10 @@
  *	2016-10-13	- Fixed range check so tiles seem to update properly now. May have fixed freezing as well.
  *				- Fixed date resetting feature
  *				- Changed voltage range scale so that color changes will represent better the critical nature of the voltage swing. 114-126 is +-5% of 120 and is considered acceptable.
+ *	2016-11-18	- Fixed display issues now that SmartThings for Android 2.2.2 has been released
+ *				- Added ability to enter an adjustment value for the energy meter so you can keep track of power consumption from last bill you received. Use last reading on bill,
+ *				  then check current reading, reset the counter and enter the difference in the settings. This way, the "Adjusted Meter" should be quite close to what the utility will
+ *				  bill you at the end of the month.
  *				- 
  *				- 
  *
@@ -100,7 +102,10 @@ metadata {
 		//attribute "power",			"number"		// Sum of power from both legs, total power used by house (defined by capability)
 		//attribute "amps",				"number"		// Sum of amperage from both legs, total power used by house (defined by capability)
 		//attribute "volts",			"number"		// Volts of both legs, total power used by house (defined by capability)
-        
+		
+        attribute "E_METER",		"number"		// Sum last meter reading to current E_L1_L2 counter to get current meter reading
+        attribute "ADJ_METER",		"number"		// Meter adjustment so you can keep track of monthly usage even without resetting the meter at the same time as your service provider.
+
 		attribute "E_L1_L2",		"number"		// Sum of energy (kWh) used on both legs, total energy used by house
 		attribute "E_L1",			"number"		// Energy from leg 1
 		attribute "E_L2",			"number"		// Energy from leg 2
@@ -247,7 +252,7 @@ metadata {
 		valueTile("resetDate", "device.resetDate", width: 3, height: 1) {
 			state(
 				"resetDate",
-				label: '${currentValue}', 
+				label: 'Since: ${currentValue}', 
 				backgroundColor: "#ffffff")
 		}    
 		valueTile("E_L1_L2", "device.E_L1_L2", width: 3, height: 1/*, canChangeIcon: true*/) {
@@ -259,15 +264,21 @@ metadata {
 		valueTile("E_L1", "device.E_L1", width: 3, height: 1) {
 			state(
 				"E_L1",
-				label: '${currentValue} kWh', 
+				label: 'L1: ${currentValue} kWh', 
 				backgroundColor: "#ffffff")
 		}        
 		valueTile("E_L2", "device.E_L2", width: 3, height: 1) {
 			state(
 				"E_L2",
-				label: '${currentValue} kWh', 
+				label: 'L2: ${currentValue} kWh', 
 				backgroundColor: "#ffffff")
 		}
+        valueTile("E_METER", "device.E_METER", width: 6, height: 2) {
+			state(
+				"E_METER",
+				label: 'Adjusted Meter: ${currentValue} kWh', 
+				backgroundColor: "#ffffff")
+		} 
 
 	// ************************************************************************
 	// * Voltage tile - Just one as voltage is the same on both legs
@@ -362,23 +373,23 @@ metadata {
 	// ************************************************************************
 
 		// Reset Button - Clear display and start over (will not reset kWh counter)
-		standardTile("reset", "command.reset", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-			state "default", label:'___reset___', action:"reset", icon: "st.Health & Wellness.health7", backgroundColor: "#bcccac"
+		standardTile("reset", "command.reset", inactiveLabel: false, /*decoration: "flat",*/ width: 2, height: 2) {
+			state "default", label:'Reset', action:"reset", icon: "st.Health & Wellness.health7", backgroundColor: "#bcccac"
 		}
 
 		// Reset kWh Button - Clear display, reset kWh counter and start over
 		standardTile("resetCtr", "device.reset_ctr", inactiveLabel: false, decoration: "flat", width: 6, height: 2) {
-			state "default", label:'reset kwh counter', action:"resetCtr", icon: "st.Office.office10"
+			state "default", label:'Reset kWh Counter', action:"resetCtr", icon: "st.Office.office10"
 		}
 
 		// Refresh Button
-		standardTile("refresh", "command.refresh", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-			state "default", label:'_refresh_', action:"refresh.refresh", icon:"st.secondary.refresh-icon", backgroundColor: "#bcccac" 
+		standardTile("refresh", "command.refresh", inactiveLabel: false, /*decoration: "flat",*/ width: 2, height: 2) {
+			state "default", label:'Refresh', action:"refresh.refresh", icon:"st.secondary.refresh-icon", backgroundColor: "#bcccac" 
 		}
 
 		// Configure Button
-		standardTile("configure", "command.configure", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-			state "configure", label:'configure', action:"configuration.configure", icon:"st.secondary.tools", backgroundColor: "#bcccac"
+		standardTile("configure", "command.configure", inactiveLabel: false, /*decoration: "flat",*/ width: 2, height: 2) {
+			state "configure", label:'Config', action:"configuration.configure", icon:"st.secondary.tools", backgroundColor: "#bcccac"
 		}
 
 
@@ -399,6 +410,7 @@ metadata {
 			"A_L1","A_L2",
 			"resetDate", "E_L1_L2",
 			"E_L1","E_L2",
+            "E_METER",
 			"reset","refresh","configure",
 			"resetCtr"
 			])
@@ -420,6 +432,8 @@ metadata {
         input name: "vAdjustment",		type: "number", title: "Voltage adjustment (+/-x)", 	description: "Enter adjustment amount +/-x",	defaultValue: 0,		displayDuringSetup: false
 		input name: "debugOnOff",		type: "enum", 	title: "Debug log messages", 			description: "", options: ["on", "off"],		defaultValue: "on",		displayDuringSetup: false
         input name: "devDebugOnOff",	type: "enum", 	title: "Developer Debug log messages", 	description: "", options: ["on", "off"],		defaultValue: "off",	displayDuringSetup: false
+        input name: "lastMeterReading",	type: "number", title: "Last Meter Reading (kWh)",		description: "Enter kWh from last bill",		defaultValue: 0,		displayDuringSetup: false
+        input name: "meterAdjustment",	type: "number", title: "Meter Adjustment (kWh)",		description: "Enter kWh used between last bill and last time the meter was reset",		defaultValue: 0,		displayDuringSetup: false
 	}
 
 }
@@ -475,10 +489,14 @@ def parse(String description) {
     
 def zwaveEvent(physicalgraph.zwave.commands.meterv1.MeterReport cmd) {
 	def newValue
+    def adjValue
 	def formattedValue
 	def MAX_AMPS = 220				// This exceeds typical residential split-phase panel amerage on purpose, cuts off values that are too high (fluke in reading)
 	def MAX_WATTS = 26400			// This exceeds typical residential split-phase panel power on purpose, cuts off values that are too high (fluke in reading)
     def Integer vAdj = settings.vAdjustment as Integer
+    def Integer eAdj = settings.meterAdjustment as Integer
+    def Integer meter = settings.lastMeterReading as Integer
+    //def Integer day = now.date
     
     // Just to be sure vAdj is 0 if preference was not set.
     if (vAdj == null) {
@@ -496,6 +514,11 @@ def zwaveEvent(physicalgraph.zwave.commands.meterv1.MeterReport cmd) {
                 sendEvent(name: "E_L1_L2", value: formattedValue, unit: "", descriptionText: "Total Energy: ${formattedValue} kWh"/*, displayed: false*/)
 				[name: "E_L1_L2", value: formattedValue, unit: "kWh", descriptionText: "Total Energy: ${formattedValue} kWh"]
                 //[name: "energy", value: newValue, unit: "kWh", descriptionText: "Total Energy: ${formattedValue} kWh"]
+                
+                adjValue = newValue + eAdj
+                state.E_METER = adjValue
+                formattedValue = String.format("%5.1f", adjValue)
+                sendEvent(name: "E_METER", value: formattedValue, unit: "", descriptionText: "Adjusted Meter: ${formattedValue} kWh")
 			}
 		} 
 		
@@ -550,7 +573,7 @@ def zwaveEvent(physicalgraph.zwave.commands.meterv1.MeterReport cmd) {
 	            	//New value within acceptable range therefore OK to display
 					if (newValue != state.A_L1_L2) {
 						state.A_L1_L2 = newValue
-                        sendEvent(name: "A_L1_L2", value: formattedValue, unit: "", descriptionText: "Total Current: ${formattedValue} A"/*, displayed: false*/)              
+                        sendEvent(name: "A_L1_L2", value: formattedValue, unit: "", descriptionText: "Total Current: ${formattedValue} A"/*, displayed: false*/)            
 						[name: "A_L1_L2", value: formattedValue, unit: "A", descriptionText: "Total Current: ${formattedValue} A"] // This makes mini tile appear in "Recently" log
 						//[name: "amps", value: newValue, unit: "A", descriptionText: "Total Current: ${formattedValue} A"] //Likely can be deleted if correction above doesn't break anything           	
                  	}
@@ -615,7 +638,7 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap 
                     formattedValue = String.format("%5.1f", newValue)
 					if (newValue < 0 || newValue > MAX_AMPS ) {
                     	//New value outside of acceptable range therefore not OK to display. Log value for debugging purposes.
-                    	if (settings.debugOnOff == "on") {log.debug "ERROR: Out of range W_L1 value: ${formattedValue} A"}
+                    	if (settings.debugOnOff == "on") {log.debug "ERROR: Out of range A_L1 value: ${formattedValue} A"}
                     }
                     else {
                     		//New value within acceptable range therefore OK to display
@@ -681,7 +704,8 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap 
                     		//New value within acceptable range therefore OK to display
 							if (newValue != state.A_L2) {
 								state.A_L2 = newValue
-								[name: "A_L2", value: formattedValue, unit: "", descriptionText: "L2 Current: ${formattedValue} A"]
+								//sendEvent(name: "A_L2", value: formattedValue, unit: "", descriptionText: "L2 Current: ${formattedValue} A") // Is this needed?
+                                [name: "A_L2", value: formattedValue, unit: "", descriptionText: "L2 Current: ${formattedValue} A"]
                             }
 					}
 				}
@@ -708,7 +732,7 @@ def zwaveEvent(physicalgraph.zwave.Command cmd) {
 // Read new values and display them on screen. Do not reset anything.
 def refresh() {
 	if (settings.devDebugOnOff == "on") {log.debug "refresh()"}
-
+    
 	newMeasurements()		// Read new values from meter
 	updateDisplay()			// Send new values to display
 }
@@ -737,7 +761,7 @@ def updateDisplay() {
     sendEvent(name: "E_L1", value: state.E_L1, unit: "")
     sendEvent(name: "E_L2", value: state.E_L2, unit: "")
 
-	sendEvent(name: "resetDate", value: state.resetDate, unit: "")	
+	sendEvent(name: "resetDate", value: state.resetDate, unit: "")
 
 }
 
